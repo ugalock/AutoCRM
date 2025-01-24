@@ -4,6 +4,8 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { createServer, type Server } from "http";
 import { setupVite, serveStatic, log } from "./vite";
+import usersRouter from '@server/routes/users';
+import ticketsRouter from '@server/routes/tickets';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -19,6 +21,9 @@ app.use(express.json());
 app.get('/api/health', (req, res) => {
     res.json({ status: 'healthy' });
 });
+
+app.use('/users', usersRouter);
+app.use('/tickets', ticketsRouter);
 
 (async () => {
     try {

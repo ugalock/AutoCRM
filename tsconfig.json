@@ -38,6 +38,9 @@
             "@db/*": [
                 "./db/*"
             ],
+            "@server/*": [
+                "./server/src/*"
+            ],
             "@/*": [
                 "./client/src/*"
             ]

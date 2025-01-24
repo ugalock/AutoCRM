@@ -2,6 +2,7 @@ import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import Login from '@/pages/Login';
+import { EmployeeWorkspace } from '@/pages/EmployeeWorkspace';
 
 // Protected Route wrapper component
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -28,6 +29,11 @@ function App() {
           <Route path="/" element={
             <ProtectedRoute>
               <div>Dashboard (TODO)</div>
+            </ProtectedRoute>
+          } />
+          <Route path="/employee/*" element={
+            <ProtectedRoute>
+              <EmployeeWorkspace />
             </ProtectedRoute>
           } />
         </Routes>

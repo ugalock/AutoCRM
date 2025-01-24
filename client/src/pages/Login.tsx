@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -6,14 +7,17 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Loader2 } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface LoginFormData {
     email: string;
     password: string;
+    organization_id?: string;
 }
 
 const Login: React.FC = () => {
-    const { signIn, signUp } = useAuth();
+    const { signIn, signUp, organizations, loadingOrgs } = useAuth();
+    const navigate = useNavigate();
     const [isRegistering, setIsRegistering] = useState(false);
     const [formData, setFormData] = useState<LoginFormData>({
         email: '',
@@ -28,10 +32,14 @@ const Login: React.FC = () => {
             setError('');
             setLoading(true);
             if (isRegistering) {
-                await signUp(formData.email, formData.password);
+                if (!formData.organization_id) {
+                    throw new Error('Please select an organization');
+                }
+                const isAgent = await signUp(formData.email, formData.password, formData.organization_id);
                 setError('Registration successful! Please check your email to verify your account.');
             } else {
-                await signIn(formData.email, formData.password);
+                const isAgent = await signIn(formData.email, formData.password);
+                navigate(isAgent ? '/employee' : '/');
             }
         } catch (err) {
             setError(isRegistering ? 'Failed to register.' : 'Failed to sign in. Please check your credentials.');
@@ -49,9 +57,21 @@ const Login: React.FC = () => {
         }));
     };
 
+    const handleOrganizationChange = (value: string) => {
+        setFormData(prev => ({
+            ...prev,
+            organization_id: value
+        }));
+    };
+
     const toggleMode = () => {
         setIsRegistering(!isRegistering);
         setError('');
+        setFormData({
+            email: '',
+            password: '',
+            organization_id: undefined
+        });
     };
 
     return (
@@ -59,7 +79,7 @@ const Login: React.FC = () => {
             <Card className="w-full max-w-md">
                 <CardHeader className="space-y-1">
                     <CardTitle className="text-2xl text-center">
-                        {isRegistering ? 'Create an Account' : 'Welcome Back'}
+                        {isRegistering ? 'Create an Account' : 'AutoCRM'}
                     </CardTitle>
                     <CardDescription className="text-center">
                         {isRegistering
@@ -106,6 +126,27 @@ const Login: React.FC = () => {
                                     className="transition-all duration-200"
                                 />
                             </div>
+                            {isRegistering && (
+                                <div className="space-y-2">
+                                    <Label htmlFor="organization">Organization</Label>
+                                    <Select
+                                        disabled={loading || loadingOrgs}
+                                        value={formData.organization_id}
+                                        onValueChange={handleOrganizationChange}
+                                    >
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Select an organization" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {organizations.map((org) => (
+                                                <SelectItem key={org.id} value={org.id}>
+                                                    {org.name}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                            )}
                         </div>
 
                         <Button
