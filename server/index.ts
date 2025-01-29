@@ -12,10 +12,15 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const PORT = process.env.PORT || 3001;
+const PORT = parseInt(process.env.PORT || "5000");
+const HOST = process.env.HOST || "0.0.0.0";
 
 // Middleware
-app.use(cors());
+app.use(cors({
+    origin: process.env.CORS_ORIGIN || "*",
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization']
+}));
 app.use(express.json());
 
 // API Routes
@@ -98,10 +103,9 @@ app.use('/kb', kbRouter);
             process.exit(1);
         }
 
-        // Start server on port 5000
-        const PORT = 5000;
-        server.listen(PORT, "0.0.0.0", () => {
-            log(`Server started successfully on port ${PORT}`);
+        // Start server
+        server.listen(PORT, HOST, () => {
+            log(`Server started successfully on ${HOST}:${PORT}`);
         });
     } catch (error) {
         log(`[FATAL] Server failed to start: ${error}`);
