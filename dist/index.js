@@ -1,3 +1,10 @@
+var __require = /* @__PURE__ */ ((x) => typeof require !== "undefined" ? require : typeof Proxy !== "undefined" ? new Proxy(x, {
+  get: (a, b) => (typeof require !== "undefined" ? require : a)[b]
+}) : x)(function(x) {
+  if (typeof require !== "undefined") return require.apply(this, arguments);
+  throw Error('Dynamic require of "' + x + '" is not supported');
+});
+
 // server/index.ts
 import express2 from "express";
 import cors from "cors";
@@ -116,14 +123,24 @@ async function setupVite(app2, server) {
   });
 }
 function serveStatic(app2) {
-  const distPath = path2.resolve(__dirname2, "public");
-  if (!fs.existsSync(distPath)) {
+  const possiblePaths = [
+    path2.resolve(__dirname2, "public"),
+    path2.resolve(__dirname2, "..", "dist", "public"),
+    path2.resolve(__dirname2, "..", "client", "dist"),
+    // Amplify specific paths
+    path2.resolve(__dirname2, "..", "client", "build"),
+    process.env.STATIC_FILES_PATH
+    // Allow override through env var
+  ].filter(Boolean);
+  const distPath = possiblePaths.find((p) => p && fs.existsSync(p));
+  if (!distPath) {
     throw new Error(
-      `Could not find the build directory: ${distPath}, make sure to build the client first`
+      `Could not find the build directory. Tried: ${possiblePaths.join(", ")}. Make sure to build the client first.`
     );
   }
+  log(`Serving static files from: ${distPath}`);
   app2.use(express.static(distPath));
-  app2.use("*", (_req, res) => {
+  app2.get("*", (_req, res) => {
     res.sendFile(path2.resolve(distPath, "index.html"));
   });
 }
@@ -534,11 +551,15 @@ router4.get("/", softVerifyAuth, async (req, res) => {
 var kb_default = router4;
 
 // server/index.ts
-var __filename3 = fileURLToPath3(import.meta.url);
-var __dirname3 = path3.dirname(__filename3);
+var serverless = __require("serverless-http");
 var app = express2();
-var PORT = process.env.PORT || 3001;
-app.use(cors());
+var PORT = parseInt(process.env.PORT || "5000");
+var HOST = process.env.HOST || "0.0.0.0";
+app.use(cors({
+  origin: process.env.CORS_ORIGIN || "*",
+  methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"]
+}));
 app.use(express2.json());
 app.get("/api/health", (req, res) => {
   res.json({ status: "healthy" });
@@ -547,35 +568,41 @@ app.use("/users", users_default);
 app.use("/tickets", tickets_default);
 app.use("/teams", teams_default);
 app.use("/kb", kb_default);
-(async () => {
-  try {
-    log("Starting server initialization...");
-    const server = createServer(app);
-    app.use((err, _req, res, _next) => {
-      const status = err.status || err.statusCode || 500;
-      const message = err.message || "Internal Server Error";
-      log(`[ERROR] ${status}: ${message}`);
-      res.status(status).json({ message });
-    });
-    console.log(app.get("env"));
+if (app.get("env") === "development") {
+  const __filename3 = fileURLToPath3(import.meta.url);
+  const __dirname3 = path3.dirname(__filename3);
+  (async () => {
     try {
-      if (app.get("env") === "development") {
-        await setupVite(app, server);
-        log("Vite setup completed");
-      } else {
-        serveStatic(app);
-        log("Static serving setup completed");
+      log("Starting server initialization...");
+      const server = createServer(app);
+      app.use((err, _req, res, _next) => {
+        const status = err.status || err.statusCode || 500;
+        const message = err.message || "Internal Server Error";
+        log(`[ERROR] ${status}: ${message}`);
+        res.status(status).json({ message });
+      });
+      console.log(app.get("env"));
+      try {
+        if (app.get("env") === "development") {
+          await setupVite(app, server);
+          log("Vite setup completed");
+        } else {
+          serveStatic(app);
+          log("Static serving setup completed");
+        }
+      } catch (setupError) {
+        log(`Frontend setup failed: ${setupError}`);
+        process.exit(1);
       }
-    } catch (setupError) {
-      log(`Frontend setup failed: ${setupError}`);
+      server.listen(PORT, HOST, () => {
+        log(`Server started successfully on ${HOST}:${PORT}`);
+      });
+    } catch (error) {
+      log(`[FATAL] Server failed to start: ${error}`);
       process.exit(1);
     }
-    const PORT2 = 5e3;
-    server.listen(PORT2, "0.0.0.0", () => {
-      log(`Server started successfully on port ${PORT2}`);
-    });
-  } catch (error) {
-    log(`[FATAL] Server failed to start: ${error}`);
-    process.exit(1);
-  }
-})();
+  })();
+} else {
+  const handler = serverless(app);
+  module.exports.handler = handler;
+}
