@@ -53,7 +53,7 @@ CREATE TABLE tickets (
   subject TEXT NOT NULL,
   description TEXT,
   status TEXT REFERENCES ticket_statuses(status) NOT NULL,
-  priority TEXT CHECK (priority IN ('low', 'medium', 'high', 'urgent')),
+  priority TEXT CHECK (priority IN ('low', 'normal', 'high', 'urgent')),
   customer_id UUID REFERENCES users(id),
   assigned_to UUID REFERENCES users(id),
   team_id UUID REFERENCES teams(id),

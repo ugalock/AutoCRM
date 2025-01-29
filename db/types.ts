@@ -1,3 +1,15 @@
+export const AutoCRM = {
+    id: '9066e91f-faa2-4a68-8749-af0582dd435c',
+    name: 'AutoCRM'
+}
+
+export interface TeamMemberCount {
+    user_id: string;
+    role: string;
+    email: string;
+    open_ticket_count: number;
+}
+
 export type Json =
   | string
   | number

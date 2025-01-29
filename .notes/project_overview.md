@@ -89,7 +89,7 @@ Customer Features
 	OpenAPI Specifications for routes can be found in the .notes/routes.md file. Any new routes should be added to this file.
 
 *** DB SCHEMA ***
-	DB schema can be found in the db/schema.sql file. Any new or altered tables should be added to this file.
+	DB schema can be found in the db/schema.sql file, it should be read before writing any supabase queries so columns are correctly named. Any new or altered tables should be added to this file.
 
 *** FILE STRUCTURE EXAMPLE ***
 ├── client

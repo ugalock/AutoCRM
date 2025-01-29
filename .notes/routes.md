@@ -63,7 +63,7 @@ Tickets
 
     POST /tickets
         Create a new ticket.
-        Body: subject, description, customer_id, channel
+        Body: team_id, subject, description, priority, customer_id, channel
         Roles: Customer/Agent
 
     GET /tickets/{ticketId}
@@ -100,15 +100,19 @@ Messages & Collaboration
         Roles: Admin
 
 Knowledge Base
-    GET /kb/articles
-        Search articles by title/category/tags.
-        Query Params: search, category
+    GET /kb
+        List all knowledge base articles for AutoCRM and the user's organization (if logged in).
         Roles: Public
 
-    POST /kb/articles
+    POST /kb
         Create a knowledge base article.
-        Body: title, content, category
+        Body: title, content, category, organization_id
         Roles: Admin
+
+    GET /kb/search
+        Search articles by title/category/tags/organization.
+        Query Params: search, category, organization_id
+        Roles: Public
 
 Webhooks & API Integrations
     POST /webhooks

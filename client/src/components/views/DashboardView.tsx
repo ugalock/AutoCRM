@@ -14,8 +14,12 @@ import { supabase } from "@db";
 import type { Database } from "@db/types";
 import { TicketPriority } from "@/types/workspace";
 import type { RealtimeEvent } from "@/types/realtime";
+import { getUserName } from "@/lib/utils";
+import { CreateTicket } from "@/components/tickets/CreateTicket";
+import { AIChat } from '@/components/dashboard/AIChat';
+import { aiAgent } from "@services";
 
-type RoleCategory = 'agent' | 'admin' | 'owner' | 'customer'
+type RoleCategory = 'agent' | 'admin' | 'manager' | 'member'
 
 interface Role {
     roleCategory: RoleCategory
@@ -25,8 +29,9 @@ type User = Database['public']['Tables']['users']['Row'] & {
     role: Role
 }
 
-type Organization = Database['public']['Tables']['organizations']['Row']
+export type Organization = Database['public']['Tables']['organizations']['Row']
 
+type TicketStatusHistory = Database['public']['Tables']['ticket_status_history']['Row']
 type Ticket = Database["public"]["Tables"]["tickets"]["Row"] & {
     requester: User;
     assignee?: User | null;
@@ -35,7 +40,10 @@ type Ticket = Database["public"]["Tables"]["tickets"]["Row"] & {
     ticketNumber: number | 123;
     tags: { name: string }[] | [];
     custom_fields: { name: string, value: string }[] | [];
+    ticket_status_history: TicketStatusHistory[] | [];
 };
+
+type Team = Database['public']['Tables']['teams']['Row'] & { organizations: Organization };
 
 interface TicketCounts {
     open: number;
@@ -50,14 +58,16 @@ interface TicketSections {
     high: Ticket[];
     normal: Ticket[];
     low: Ticket[];
+    closed: Ticket[];
 }
 
 interface DashboardViewProps {
     onTicketSelect: (ticketId: string, subject: string, priority: TicketPriority, ticketNumber: number) => void;
     realtimeEvent: RealtimeEvent | null;
+    userRole?: RoleCategory; // ('agent', 'admin') means Employee | ('manager', 'member') means Customer
 }
 
-export function DashboardView({ onTicketSelect, realtimeEvent }: DashboardViewProps) {
+export function DashboardView({ onTicketSelect, realtimeEvent, userRole = 'member' }: DashboardViewProps) {
     const [tickets, setTickets] = useState<Ticket[]>([]);
     const [ticketSections, setTicketSections] = useState<TicketSections>({
         requireAction: [],
@@ -65,6 +75,7 @@ export function DashboardView({ onTicketSelect, realtimeEvent }: DashboardViewPr
         high: [],
         normal: [],
         low: [],
+        closed: [],
     });
     const [ticketCounts, setTicketCounts] = useState<TicketCounts>({
         open: 0,
@@ -77,6 +88,7 @@ export function DashboardView({ onTicketSelect, realtimeEvent }: DashboardViewPr
     const [selectedTickets, setSelectedTickets] = useState<Set<string>>(new Set());
     const [allSelected, setAllSelected] = useState(false);
     const [isUpdatesPanelOpen, setIsUpdatesPanelOpen] = useState(true);
+    const [isAIChatActive, setIsAIChatActive] = useState(false);
     const [columnWidths, setColumnWidths] = useState({
         checkbox: 48, // w-12
         status: 90,   // w-[90px]
@@ -91,6 +103,62 @@ export function DashboardView({ onTicketSelect, realtimeEvent }: DashboardViewPr
     const [startWidth, setStartWidth] = useState(0);
     const tableRef = useRef<HTMLTableElement>(null);
 
+    // Get current user's ID for CreateTicket component
+    const [userId, setUserId] = useState<string>('');
+    const [user, setUser] = useState<User | null>(null);
+    const [teams, setTeams] = useState<Team[]>([]);
+    const [ticketCreateArgs, setTicketCreateArgs] = useState<{ team_name: string, subject: string, description: string } | null>(null);
+
+    useEffect(() => {
+        async function fetchTeams() {
+            try {
+                const { data: { session } } = await supabase.auth.getSession();
+                if (!session) return;
+
+                const response = await fetch('/teams', {
+                    headers: {
+                        'Authorization': `Bearer ${session.access_token}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+                const data = await response.json();
+                setTeams(data.teams || []);
+            } catch (err) {
+                setError(err instanceof Error ? err.message : 'Failed to fetch teams');
+            }
+        }
+
+        fetchTeams();
+    }, []);
+
+    useEffect(() => {
+        async function getCurrentUser() {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (session) {
+                const response = await fetch(
+                    `/users/${session.user.id}`,
+                    {
+                        headers: {
+                            Authorization: `Bearer ${session.access_token}`,
+                            'Content-Type': 'application/json',
+                        },
+                    }
+                )
+
+                const { user, error } = await response.json()
+                if (error) {
+                    console.error('Error fetching user:', error);
+                    setError(error);
+                    return;
+                }
+                // console.log(user);
+                setUser(user);
+                setUserId(user.id);
+            }
+        }
+        getCurrentUser();
+    }, []);
+
     // Function to organize tickets into sections
     const organizeTicketsIntoSections = (ticketsToOrganize: Ticket[], userId: string) => {
         const sections: TicketSections = {
@@ -99,6 +167,7 @@ export function DashboardView({ onTicketSelect, realtimeEvent }: DashboardViewPr
             high: [],
             normal: [],
             low: [],
+            closed: [],
         };
 
         ticketsToOrganize.forEach((ticket) => {
@@ -107,6 +176,8 @@ export function DashboardView({ onTicketSelect, realtimeEvent }: DashboardViewPr
 
             if (ticket.status === 'New' && isAssignedToMe) {
                 sections.requireAction.push(ticket);
+            } else if (ticket.closed_at) {
+                sections.closed.push(ticket);
             } else {
                 // Add to priority-based section
                 switch (ticket.priority) {
@@ -208,8 +279,8 @@ export function DashboardView({ onTicketSelect, realtimeEvent }: DashboardViewPr
                     return;
                 }
 
-                if (ticketData && ticketData.length > 0) {
-                    const updatedTicket = ticketData[0];
+                if (ticketData && ticketData.ticket) {
+                    const updatedTicket = ticketData.ticket;
 
                     setTickets(prevTickets => {
                         let updatedTickets;
@@ -328,7 +399,7 @@ export function DashboardView({ onTicketSelect, realtimeEvent }: DashboardViewPr
                                     />
                                     <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 invisible group-hover:visible bg-gray-900 text-white text-xs rounded py-1 px-2 w-64 whitespace-normal text-left" style={{ zIndex: 100000 }}>
                                         <div className="font-medium mb-1 capitalize">{ticket.status.replace('_', ' ')}</div>
-                                        {getStatusDescription(ticket.status)}
+                                        {ticket.status}
                                         <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1">
                                             <div className="border-4 border-transparent border-t-gray-900"></div>
                                         </div>
@@ -347,7 +418,7 @@ export function DashboardView({ onTicketSelect, realtimeEvent }: DashboardViewPr
                             </div>
                         </td>
                         <td className="py-3 px-4 text-left" style={{ width: `${columnWidths.requester}%` }} onClick={() => onTicketSelect(ticket.id, ticket.subject, ticket.priority, ticket.ticketNumber)}>
-                            <span className="truncate block">{ticket.requester?.email.split('@')[0] || 'Unknown'}</span>
+                            <span className="truncate block">{getUserName(ticket.requester)}</span>
                         </td>
                         <td className="py-3 px-4 text-left relative group" style={{ width: `${columnWidths.updated}%` }} onClick={() => onTicketSelect(ticket.id, ticket.subject, ticket.priority, ticket.ticketNumber)}>
                             <span className="truncate block">{format(ticket.updated_at || '')}</span>
@@ -362,7 +433,7 @@ export function DashboardView({ onTicketSelect, realtimeEvent }: DashboardViewPr
                             <span className="truncate block">{ticket.organization?.name || ''}</span>
                         </td>
                         <td className="py-3 px-4 text-left" style={{ width: `${columnWidths.assignee}%` }} onClick={() => onTicketSelect(ticket.id, ticket.subject, ticket.priority, ticket.ticketNumber)}>
-                            <span className="truncate block">{ticket.assignee?.email.split('@')[0] || ''}</span>
+                            <span className="truncate block">{getUserName(ticket.assignee)}</span>
                         </td>
                     </tr>
                 ))}
@@ -404,6 +475,26 @@ export function DashboardView({ onTicketSelect, realtimeEvent }: DashboardViewPr
         }
     }, [resizing, startX, startWidth]);
 
+    // Function to handle MessageCircle click
+    const handleAIChatToggle = () => {
+        if (isAIChatActive) {
+            setIsAIChatActive(false);
+        } else {
+            setIsUpdatesPanelOpen(false);
+            setIsAIChatActive(true);
+        }
+    };
+
+    // Update the updates panel toggle to also handle AI chat
+    const handleUpdatesPanelToggle = () => {
+        if (isUpdatesPanelOpen) {
+            setIsUpdatesPanelOpen(false);
+        } else {
+            setIsAIChatActive(false);
+            setIsUpdatesPanelOpen(true);
+        }
+    };
+
     if (loading) return <div>Loading...</div>;
     if (error) return <div>Error: {error}</div>;
 
@@ -412,7 +503,10 @@ export function DashboardView({ onTicketSelect, realtimeEvent }: DashboardViewPr
             {/* Left Sidebar */}
             <div className="w-14 bg-[#1f73b7] flex flex-col items-center py-4 text-white">
                 <div className="mb-8">
-                    <div className="w-8 h-8 bg-white/20 rounded flex items-center justify-center">
+                    <div 
+                        className={`w-8 h-8 ${isAIChatActive ? 'bg-white text-[#1f73b7]' : 'bg-white/20'} rounded flex items-center justify-center cursor-pointer hover:bg-white hover:text-[#1f73b7] transition-colors`}
+                        onClick={handleAIChatToggle}
+                    >
                         <MessageCircle size={20} />
                     </div>
                 </div>
@@ -434,29 +528,36 @@ export function DashboardView({ onTicketSelect, realtimeEvent }: DashboardViewPr
 
             <div className="flex-1 flex">
                 {/* Updates Panel */}
-                <div className={`relative bg-gray-100 border-r ${isUpdatesPanelOpen ? 'w-80' : 'w-0'} transition-all duration-300 ease-in-out flex flex-col overflow-hidden`}>
-                    {isUpdatesPanelOpen && (
-                        <>
-                            <div className="p-4 border-b bg-white">
-                                <h2 className="font-medium">Updates to tickets</h2>
+                {isUpdatesPanelOpen && (
+                    <div className="relative bg-gray-100 border-r w-80 transition-all duration-300 ease-in-out flex flex-col overflow-hidden">
+                        <div className="p-4 border-b bg-white">
+                            <h2 className="font-medium">Updates to tickets</h2>
+                        </div>
+                        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                            <div className="bg-white rounded-lg shadow-sm p-4">
+                                Updates to tickets will appear here
                             </div>
-                            <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                                <div className="bg-white rounded-lg shadow-sm p-4">
-                                    Updates to tickets will appear here
-                                </div>
-                            </div>
-                        </>
-                    )}
-                </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* AI Chat Panel */}
+                <AIChat
+                    currentUser={user}
+                    isActive={isAIChatActive}
+                    onClose={() => setIsAIChatActive(false)}
+                    teams={teams}
+                    onTicketCreate={setTicketCreateArgs}
+                />
 
                 {/* Collapse Button */}
                 <div className="relative z-50">
-                    <div className={`absolute top-1/2 ${isUpdatesPanelOpen ? '-right-3' : '-right-2'} transform -translate-y-1/2`}>
+                    <div className={`absolute top-1/2 ${isUpdatesPanelOpen || isAIChatActive ? '-right-3' : '-right-2'} transform -translate-y-1/2`}>
                         <button
-                            onClick={() => setIsUpdatesPanelOpen(!isUpdatesPanelOpen)}
+                            onClick={isAIChatActive ? handleAIChatToggle : handleUpdatesPanelToggle}
                             className="bg-white rounded-full p-1 shadow-md hover:bg-gray-50 transition-colors"
                         >
-                            {isUpdatesPanelOpen ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
+                            {isUpdatesPanelOpen || isAIChatActive ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
                         </button>
                     </div>
                 </div>
@@ -482,24 +583,33 @@ export function DashboardView({ onTicketSelect, realtimeEvent }: DashboardViewPr
                                     </div>
                                 </div>
 
-                                {/* Ticket Statistics Section */}
-                                <div className="pl-6 w-[450px]">
-                                    <h2 className="text-lg font-medium mb-4 text-left">Ticket Statistics</h2>
-                                    <div className="flex">
-                                        <div className="bg-white p-4 rounded-l-lg border-l border-y border-r w-[138px]">
-                                            <div className="text-sm font-medium mb-2">Good</div>
-                                            <div className="text-2xl font-bold">999</div>
-                                        </div>
-                                        <div className="bg-white p-4 border-y w-[138px]">
-                                            <div className="text-sm font-medium mb-2">Bad</div>
-                                            <div className="text-2xl font-bold">999</div>
-                                        </div>
-                                        <div className="bg-white p-4 rounded-r-lg border w-[138px]">
-                                            <div className="text-sm font-medium mb-2">Solved</div>
-                                            <div className="text-2xl font-bold">999</div>
+                                {/* Conditional rendering based on userRole */}
+                                {(userRole === 'manager' || userRole === 'member') ? (
+                                    <CreateTicket 
+                                        userId={userId} 
+                                        teams={teams} 
+                                        initialValues={ticketCreateArgs}
+                                    />
+                                ) : (
+                                    /* Ticket Statistics Section */
+                                    <div className="pl-6 w-[450px]">
+                                        <h2 className="text-lg font-medium mb-4 text-left">Ticket Statistics</h2>
+                                        <div className="flex">
+                                            <div className="bg-white p-4 rounded-l-lg border-l border-y border-r w-[138px]">
+                                                <div className="text-sm font-medium mb-2">Good</div>
+                                                <div className="text-2xl font-bold">999</div>
+                                            </div>
+                                            <div className="bg-white p-4 border-y w-[138px]">
+                                                <div className="text-sm font-medium mb-2">Bad</div>
+                                                <div className="text-2xl font-bold">999</div>
+                                            </div>
+                                            <div className="bg-white p-4 rounded-r-lg border w-[138px]">
+                                                <div className="text-sm font-medium mb-2">Solved</div>
+                                                <div className="text-2xl font-bold">999</div>
+                                            </div>
                                         </div>
                                     </div>
-                                </div>
+                                )}
                             </div>
                         </div>
                     </div>
@@ -554,7 +664,7 @@ export function DashboardView({ onTicketSelect, realtimeEvent }: DashboardViewPr
                                                 </div>
                                             </th>
                                             <th className="py-3 px-4 text-left font-medium relative" style={{ width: `${columnWidths.updated}%` }}>
-                                                Requester updated
+                                                Last updated
                                                 <div
                                                     className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-blue-500 group"
                                                     onMouseDown={(e) => handleResizeStart(e, 'updated', columnWidths.updated)}
@@ -563,16 +673,16 @@ export function DashboardView({ onTicketSelect, realtimeEvent }: DashboardViewPr
                                                 </div>
                                             </th>
                                             <th className="py-3 px-4 text-left font-medium relative" style={{ width: `${columnWidths.organization}%` }}>
-                                                Group
+                                                Org
                                                 <div
                                                     className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-blue-500 group"
-                                                    onMouseDown={(e) => handleResizeStart(e, 'group', columnWidths.organization)}
+                                                    onMouseDown={(e) => handleResizeStart(e, 'organization', columnWidths.organization)}
                                                 >
                                                     <div className="absolute inset-y-0 right-0 w-4 -translate-x-1/2 group-hover:bg-blue-500/10" />
                                                 </div>
                                             </th>
                                             <th className="py-3 px-4 text-left font-medium relative" style={{ width: `${columnWidths.assignee}%` }}>
-                                                Assignee
+                                                Agent
                                             </th>
                                         </tr>
                                     </thead>
@@ -582,6 +692,7 @@ export function DashboardView({ onTicketSelect, realtimeEvent }: DashboardViewPr
                                         {renderTicketSection('High Priority', ticketSections.high)}
                                         {renderTicketSection('Normal Priority', ticketSections.normal)}
                                         {renderTicketSection('Low Priority', ticketSections.low)}
+                                        {renderTicketSection('Closed Tickets', ticketSections.closed)}
                                     </tbody>
                                 </table>
                             </div>

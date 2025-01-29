@@ -68,7 +68,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const signUp = async (email: string, password: string, organization_id: string) => {
         // First create the Supabase auth user
-        const { error: authError } = await supabase.auth.signUp({ email, password });
+        const { data, error: authError } = await supabase.auth.signUp({ email, password });
         if (authError) throw authError;
 
         // Then create the user record in our database
@@ -80,6 +80,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             body: JSON.stringify({
                 email,
                 organization_id,
+                user_id: data.user!.id,
             }),
         });
 

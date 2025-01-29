@@ -6,7 +6,8 @@ import { createServer, type Server } from "http";
 import { setupVite, serveStatic, log } from "./vite";
 import usersRouter from '@server/routes/users';
 import ticketsRouter from '@server/routes/tickets';
-
+import teamsRouter from '@server/routes/teams';
+import kbRouter from '@server/routes/kb';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -24,6 +25,8 @@ app.get('/api/health', (req, res) => {
 
 app.use('/users', usersRouter);
 app.use('/tickets', ticketsRouter);
+app.use('/teams', teamsRouter);
+app.use('/kb', kbRouter);
 
 (async () => {
     try {

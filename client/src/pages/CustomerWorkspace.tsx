@@ -19,6 +19,7 @@ import {
 import { DashboardView } from '@/components/views/DashboardView';
 import { TicketView } from '@/components/views/TicketView';
 import { NewTabDialog } from '@/components/dashboard/NewTabDialog';
+import { Footer } from '@/components/dashboard/Footer';
 import type { Database } from '@db/types';
 import { RealtimeEvent } from '@/types/realtime'
 import { getUserName } from '@/lib/utils';
@@ -26,6 +27,7 @@ import { getUserName } from '@/lib/utils';
 type DatabaseTicket = Database['public']['Tables']['tickets']['Row'];
 type DatabaseComment = Database['public']['Tables']['messages']['Row'];
 type DatabaseUser = Database['public']['Tables']['users']['Row'];
+type DatabaseOrganization = Database['public']['Tables']['organizations']['Row'];
 type RoleCategory = 'agent' | 'admin' | 'manager' | 'member'
 
 const getPriorityColor = (priority: TicketPriority | undefined): string => {
@@ -44,12 +46,12 @@ const getPriorityColor = (priority: TicketPriority | undefined): string => {
 };
 
 
-interface EmployeeHeaderProps {
+interface CustomerHeaderProps {
     currentUser: DatabaseUser | null;
     variant?: 'dashboard' | 'conversation';
 }
 
-export function EmployeeHeader({ currentUser, variant = 'conversation' }: EmployeeHeaderProps) {
+export function CustomerHeader({ currentUser, variant = 'conversation' }: CustomerHeaderProps) {
     const [showDropdown, setShowDropdown] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -142,9 +144,9 @@ export function EmployeeHeader({ currentUser, variant = 'conversation' }: Employ
             </div>
         </header>
     );
-} 
+}
 
-export function EmployeeWorkspace() {
+export function CustomerWorkspace() {
     const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
     const [workspace, setWorkspace] = useState<WorkspaceState>({
@@ -154,6 +156,7 @@ export function EmployeeWorkspace() {
     const [isNewTabDialogOpen, setIsNewTabDialogOpen] = useState(false);
     const [realtimeEvent, setRealtimeEvent] = useState<RealtimeEvent | null>(null);
     const [currentUser, setCurrentUser] = useState<DatabaseUser | null>(null);
+    const [currentOrganization, setCurrentOrganization] = useState<DatabaseOrganization | null>(null);
     const [userRole, setUserRole] = useState<RoleCategory | null>(null);
 
     useEffect(() => {
@@ -162,7 +165,7 @@ export function EmployeeWorkspace() {
             if (user) {
                 const { data: profile } = await supabase
                     .from('users')
-                    .select()
+                    .select(`*, organizations(*), customers(*)`)
                     .eq('id', user.id)
                     .single();
 
@@ -171,18 +174,12 @@ export function EmployeeWorkspace() {
                     return;
                 }
                 setCurrentUser(profile);
-
-                const { data: employee } = await supabase
-                    .from('employees')
-                    .select()
-                    .eq('user_id', user.id)
-                    .single();
-
-                if (!employee) {
+                if (!profile.customers || !profile.organizations) {
                     navigate('/');
                     return;
                 }
-                setUserRole(employee.role);
+                setCurrentOrganization(profile.organizations);
+                setUserRole(profile.customers.is_org_admin ? 'manager' : 'member');
             }
         }
 
@@ -371,100 +368,103 @@ export function EmployeeWorkspace() {
     };
 
     return (
-        <div className="flex flex-col h-screen bg-gray-50">
-            {/* Tabs */}
-            <div className="bg-white border-b relative">
-                <div className="flex items-center">
+        <div>
+            <div className="flex flex-col h-screen bg-gray-50">
+                {/* Tabs */}
+                <div className="bg-white border-b relative">
+                    <div className="flex items-center">
+                        {workspace.tabs.map(tab => (
+                            <div
+                                key={tab.id}
+                                className={`
+                    flex items-center px-4 border-r cursor-pointer font-medium h-[3.5rem]
+                    ${workspace.activeTabId === tab.id
+                                        ? 'bg-gray-100 border-b border-gray-100 relative -mb-px'
+                                        : 'bg-white shadow-[inset_0_-4px_8px_-4px_rgba(0,0,0,0.1)]'
+                                    }
+                    ${workspace.activeTabId === tab.id ? 'text-gray-900' : 'text-gray-600 hover:text-gray-900'}
+                `}
+                                onClick={() => setWorkspace(prev => ({ ...prev, activeTabId: tab.id }))}
+                            >
+                                <div className="flex items-center w-full">
+                                    {tab.type === 'ticket' && (
+                                        <Circle
+                                            size={8}
+                                            className={`mr-2 flex-shrink-0 fill-current ${getPriorityColor(tab.data?.priority)}`}
+                                        />
+                                    )}
+                                    <div className="flex flex-col items-start min-w-0 flex-1">
+                                        <span className="truncate max-w-[200px]">{tab.title}</span>
+                                        {tab.type === 'ticket' && tab.data?.ticketNumber && (
+                                            <span className="text-xs font-normal text-gray-500">
+                                                #{tab.data.ticketNumber}
+                                            </span>
+                                        )}
+                                    </div>
+                                    {tab.type !== 'dashboard' && (
+                                        <button
+                                            className="ml-2 p-0.5 hover:bg-gray-200 rounded flex-shrink-0"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                closeTab(tab.id);
+                                            }}
+                                        >
+                                            <X size={14} />
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+                        ))}
+                        <button
+                            onClick={() => setIsNewTabDialogOpen(true)}
+                            className="px-3 h-[3.5rem] hover:bg-gray-100 text-gray-600 hover:text-gray-900 border-r flex items-center"
+                        >
+                            <Plus size={20} />
+                        </button>
+                    </div>
+                </div>
+
+                {/* Header */}
+                <div className="bg-gray-100">
+                    <CustomerHeader
+                        currentUser={currentUser}
+                        variant={workspace.tabs.find(tab => tab.id === workspace.activeTabId)?.type === 'dashboard' ? 'dashboard' : 'conversation'}
+                    />
+                </div>
+
+                {/* Content */}
+                <div className="flex-1 overflow-hidden">
                     {workspace.tabs.map(tab => (
                         <div
                             key={tab.id}
-                            className={`
-                flex items-center px-4 border-r cursor-pointer font-medium h-[3.5rem]
-                ${workspace.activeTabId === tab.id
-                                    ? 'bg-gray-100 border-b border-gray-100 relative -mb-px'
-                                    : 'bg-white shadow-[inset_0_-4px_8px_-4px_rgba(0,0,0,0.1)]'
-                                }
-                ${workspace.activeTabId === tab.id ? 'text-gray-900' : 'text-gray-600 hover:text-gray-900'}
-              `}
-                            onClick={() => setWorkspace(prev => ({ ...prev, activeTabId: tab.id }))}
+                            className={`h-full ${workspace.activeTabId === tab.id ? '' : 'hidden'}`}
                         >
-                            <div className="flex items-center w-full">
-                                {tab.type === 'ticket' && (
-                                    <Circle
-                                        size={8}
-                                        className={`mr-2 flex-shrink-0 fill-current ${getPriorityColor(tab.data?.priority)}`}
-                                    />
-                                )}
-                                <div className="flex flex-col items-start min-w-0 flex-1">
-                                    <span className="truncate max-w-[200px]">{tab.title}</span>
-                                    {tab.type === 'ticket' && tab.data?.ticketNumber && (
-                                        <span className="text-xs font-normal text-gray-500">
-                                            #{tab.data.ticketNumber}
-                                        </span>
-                                    )}
-                                </div>
-                                {tab.type !== 'dashboard' && (
-                                    <button
-                                        className="ml-2 p-0.5 hover:bg-gray-200 rounded flex-shrink-0"
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            closeTab(tab.id);
-                                        }}
-                                    >
-                                        <X size={14} />
-                                    </button>
-                                )}
-                            </div>
+                            {tab.type === 'dashboard' && (
+                                <DashboardView
+                                    onTicketSelect={(ticketId, subject, priority, ticketNumber) =>
+                                        openTicketTab(ticketId, subject, priority, ticketNumber)}
+                                    realtimeEvent={realtimeEvent}
+                                    userRole={userRole!}
+                                />
+                            )}
+                            {tab.type === 'ticket' && tab.data?.ticketId && (
+                                <TicketView
+                                    ticketId={tab.data.ticketId}
+                                    realtimeEvent={realtimeEvent}
+                                    userRole={userRole!}
+                                />
+                            )}
                         </div>
                     ))}
-                    <button
-                        onClick={() => setIsNewTabDialogOpen(true)}
-                        className="px-3 h-[3.5rem] hover:bg-gray-100 text-gray-600 hover:text-gray-900 border-r flex items-center"
-                    >
-                        <Plus size={20} />
-                    </button>
                 </div>
-            </div>
 
-            {/* Header */}
-            <div className="bg-gray-100">
-                <EmployeeHeader
-                    currentUser={currentUser}
-                    variant={workspace.tabs.find(tab => tab.id === workspace.activeTabId)?.type === 'dashboard' ? 'dashboard' : 'conversation'}
+                {/* New Tab Dialog */}
+                <NewTabDialog
+                    isOpen={isNewTabDialogOpen}
+                    onClose={() => setIsNewTabDialogOpen(false)}
                 />
             </div>
-
-            {/* Content */}
-            <div className="flex-1 overflow-hidden">
-                {workspace.tabs.map(tab => (
-                    <div
-                        key={tab.id}
-                        className={`h-full ${workspace.activeTabId === tab.id ? '' : 'hidden'}`}
-                    >
-                        {tab.type === 'dashboard' && (
-                            <DashboardView
-                                onTicketSelect={(ticketId, subject, priority, ticketNumber) =>
-                                    openTicketTab(ticketId, subject, priority, ticketNumber)}
-                                realtimeEvent={realtimeEvent}
-                                userRole={userRole!}
-                            />
-                        )}
-                        {tab.type === 'ticket' && tab.data?.ticketId && (
-                            <TicketView
-                                ticketId={tab.data.ticketId}
-                                realtimeEvent={realtimeEvent}
-                                userRole={userRole!}
-                            />
-                        )}
-                    </div>
-                ))}
-            </div>
-
-            {/* New Tab Dialog */}
-            <NewTabDialog
-                isOpen={isNewTabDialogOpen}
-                onClose={() => setIsNewTabDialogOpen(false)}
-            />
+            <Footer accountName={currentOrganization?.name || 'AutoCRM'} />
         </div>
     );
 } 

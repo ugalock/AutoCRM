@@ -3,6 +3,8 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import Login from '@/pages/Login';
 import { EmployeeWorkspace } from '@/pages/EmployeeWorkspace';
+import { CustomerWorkspace } from '@/pages/CustomerWorkspace';
+import KnowledgeBase from '@/pages/KnowledgeBase';
 
 // Protected Route wrapper component
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -28,7 +30,7 @@ function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/" element={
             <ProtectedRoute>
-              <div>Dashboard (TODO)</div>
+              <Navigate to="/customer" />
             </ProtectedRoute>
           } />
           <Route path="/employee/*" element={
@@ -36,6 +38,15 @@ function App() {
               <EmployeeWorkspace />
             </ProtectedRoute>
           } />
+          <Route path="/customer/*" element={
+            <ProtectedRoute>
+              <CustomerWorkspace />
+            </ProtectedRoute>
+          } />
+          {/* <Route path="/kb/:articleId" element={<KnowledgeBase />} /> */}
+          <Route path="/kb" element={<KnowledgeBase />} >
+            <Route path=":articleId" element={<KnowledgeBase />} />
+          </Route>
         </Routes>
       </Router>
     </AuthProvider>

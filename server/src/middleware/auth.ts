@@ -1,30 +1,13 @@
 import jwt from 'jsonwebtoken';
-import { type Request, type Response, type NextFunction } from 'express';
-import { type UserRequest, type User } from '@server/types/types';
+import type { Request, Response, NextFunction } from 'express';
+import { type UserRequest, type ExpressUser } from '@server/types/types';
 import { supabase } from '@db';
 
-// export const verifyJWT = (req, res, next) => {
-//     const token = req.headers['authorization']?.split(' ')[1];
-
-//     if (token) {
-//         jwt.verify(token, process.env.VITE_SUPABASE_JWT_SECRET!, (err: any, decoded: any) => {
-//             if (err) {
-//                 return res.status(401).send('Unauthorized');
-//             }
-
-//             req.user = decoded as User;
-//             next();
-//         });
-//     } else {
-//         return res.status(401).send('Unauthorized');
-//     }
-// };
-
 export const verifyAuth = async (
-    req: Request,
+    req: UserRequest,
     res: Response,
     next: NextFunction
-): Promise<void> => {
+) => {
     try {
         const token = req.headers['authorization']?.split(' ')[1];
         if (!token) {
@@ -37,18 +20,22 @@ export const verifyAuth = async (
             return;
         }
 
-        const { data: dbUser, error: dbError } = await supabase
-            .from('users')
-            .select('*')
-            .eq('email', user.email)
-            .single();
+        req.user = { id: user.id, email: user.email } as ExpressUser;
+        next();
+    } catch (error) {
+        next(error);
+    }
+}
 
-        if (dbError || !dbUser) {
-            res.status(401).json({ error: 'Unauthorized' });
-            return;
-        }
-
-        (req as UserRequest).user = dbUser as User;
+export const softVerifyAuth = async (
+    req: UserRequest,
+    res: Response,
+    next: NextFunction
+) => {
+    try {
+        const token = req.headers['authorization']?.split(' ')[1];
+        const { data: { user }, error: userError } = token ? await supabase.auth.getUser(token) : await supabase.auth.getUser();
+        req.user = { id: user?.id, email: user?.email } as ExpressUser;
         next();
     } catch (error) {
         next(error);

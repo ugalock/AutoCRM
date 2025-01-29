@@ -15,6 +15,7 @@ export default defineConfig({
     resolve: {
         alias: {
             "@db": path.resolve(__dirname, "db"),
+            "@services": path.resolve(__dirname, "services"),
             "@": path.resolve(__dirname, "client", "src"),
         },
     },
@@ -22,6 +23,7 @@ export default defineConfig({
     build: {
         outDir: path.resolve(__dirname, "dist/public"),
         emptyOutDir: true,
+        target: "es2022",
     },
     server: {
         proxy: {
@@ -35,5 +37,10 @@ export default defineConfig({
         "process.env.VITE_SUPABASE_URL": JSON.stringify(process.env.VITE_SUPABASE_URL),
         "process.env.VITE_SUPABASE_ANON_KEY": JSON.stringify(process.env.VITE_SUPABASE_ANON_KEY),
         "process.env.VITE_SUPABASE_JWT_SECRET": JSON.stringify(process.env.VITE_SUPABASE_JWT_SECRET),
+        "process.env.OPENAI_API_KEY": JSON.stringify(process.env.OPENAI_API_KEY),
+        "process.env.LANGSMITH_TRACING": JSON.stringify(process.env.LANGSMITH_TRACING),
+        "process.env.LANGSMITH_ENDPOINT": JSON.stringify(process.env.LANGSMITH_ENDPOINT),
+        "process.env.LANGSMITH_API_KEY": JSON.stringify(process.env.LANGSMITH_API_KEY),
+        "process.env.LANGSMITH_PROJECT": JSON.stringify(process.env.LANGSMITH_PROJECT),
     },
 });

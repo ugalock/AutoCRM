@@ -1,13 +1,12 @@
-import { Router } from 'express';
+import { Router, type Request, type Response } from 'express';
 import { supabase } from '@db';
 import { verifyAuth } from '@server/middleware/auth';
-import type { Request, Response } from 'express';
 import { UserRequest } from '@server/types/types';
 
 const router = Router();
 
-router.post('/', async (req, res) => {
-    const { email, password, organization_id } = req.body;
+router.post('/', async (req: Request, res: Response) => {
+    const { email, organization_id, user_id } = req.body;
 
     try {
         // Create user in database
@@ -15,6 +14,7 @@ router.post('/', async (req, res) => {
             .from('users')
             .insert([
                 { 
+                    id: user_id,
                     email,
                     organization_id,
                 }
@@ -59,23 +59,15 @@ router.post('/', async (req, res) => {
 // Fetch user profile
 router.get('/:userId', verifyAuth, async (req: UserRequest, res: Response) => {
     const userId = req.params.userId;
-
     try {
         // Fetch user with related data
         const { data: user, error: userError } = await supabase
             .from('users')
             .select(`
                 *,
-                employee:employees(
-                    id,
-                    role,
-                    team_id
-                ),
-                customer:customers(
-                    id,
-                    is_org_admin,
-                    organization:organization_id(*)
-                )
+                employee:employees(role),
+                customer:customers(is_org_admin),
+                organization:organization_id(*)
             `)
             .eq('id', userId)
             .single();
@@ -84,8 +76,7 @@ router.get('/:userId', verifyAuth, async (req: UserRequest, res: Response) => {
         if (!user) {
             return res.status(404).json({ error: 'User not found' });
         }
-        
-        res.json(user);
+        res.json({user});
     } catch (error: any) {
         res.status(400).json({ error: error.message });
     }
