@@ -3,6 +3,7 @@ import react from "@vitejs/plugin-react";
 import path, { dirname } from "path";
 import { fileURLToPath } from "url";
 import dotenv from 'dotenv';
+import compression from 'vite-plugin-compression';
 // import tailwindcss from '@tailwindcss/vite';
 
 dotenv.config();
@@ -11,7 +12,13 @@ dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 export default defineConfig({
-    plugins: [react()],
+    plugins: [
+	react(),
+	compression({
+		algorithm: 'brotliCompress',
+      		threshold: 10240, // Only compress files larger than 10KB
+    	}),
+    ],
     resolve: {
         alias: {
             "@db": path.resolve(__dirname, "db"),

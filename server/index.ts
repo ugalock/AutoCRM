@@ -22,6 +22,16 @@ app.use(cors({
     allowedHeaders: ['Content-Type', 'Authorization']
 }));
 app.use(express.json());
+// Serve compressed files
+// app.use('/', expressStaticGzip(path.join(__dirname, 'dist'), {
+//     enableBrotli: true,
+//     orderPreference: ['br'],
+//     serveStatic: {
+//         maxAge: '1y',
+//         cacheControl: true
+//     }
+// }));
+
 
 // API Routes
 app.get('/api/health', (req, res) => {

@@ -1,4 +1,5 @@
-import express, { type Express } from "express";
+import { type Express } from "express";
+import expressStaticGzip from "express-static-gzip";
 import fs from "fs";
 import path, { dirname } from "path";
 import { fileURLToPath } from "url";
@@ -98,10 +99,20 @@ export function serveStatic(app: Express) {
     log(`Serving static files from: ${distPath}`);
     
     // Serve static files
-    app.use(express.static(distPath));
+    app.use(
+        "/",
+        expressStaticGzip(distPath, {
+            enableBrotli: true,
+            orderPreference: ["br"],
+            serveStatic: {
+                maxAge: "1y",
+                cacheControl: true,
+            },
+        })
+    );
 
     // Handle client-side routing by serving index.html for all unmatched routes
-    app.get("*", (_req, res) => {
+    app.use("*", (_req, res) => {
         res.sendFile(path.resolve(distPath, "index.html"));
     });
 }

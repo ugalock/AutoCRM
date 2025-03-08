@@ -11,7 +11,7 @@ if (error) {
 }
 
 const kbService = new KnowledgeBaseService();
-await kbService.initializeKnowledgeBase(data as KnowledgeBaseArticle[]);
+kbService.initializeKnowledgeBase(data as KnowledgeBaseArticle[]);
 
 const aiAgent = new AIAgent(kbService);
 

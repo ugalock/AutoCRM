@@ -33,6 +33,7 @@ export class AIAgent {
 
   constructor(kbService: KnowledgeBaseService) {
     this.model = new ChatOpenAI({
+        apiKey: process.env.OPENAI_API_KEY,
         modelName: 'gpt-4o-mini',
         temperature: 0.2,
     });

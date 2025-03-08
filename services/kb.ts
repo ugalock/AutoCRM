@@ -13,7 +13,7 @@ export class KnowledgeBaseService {
   constructor() {
     this.embeddings = new OpenAIEmbeddings({
       model: 'text-embedding-3-large',
-      // Add your OpenAI API configuration
+      apiKey: process.env.OPENAI_API_KEY,
     });
     this.vectorStore = new MemoryVectorStore(this.embeddings);
   }
